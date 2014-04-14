@@ -26,26 +26,26 @@ import mx.events.*;
 import mx.utils.*;
 
 public class WebSocket extends EventDispatcher {
-  
+
   private static const WEB_SOCKET_GUID:String = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  
+
   private static const CONNECTING:int = 0;
   private static const OPEN:int = 1;
   private static const CLOSING:int = 2;
   private static const CLOSED:int = 3;
-  
+
   private static const OPCODE_CONTINUATION:int = 0x00;
   private static const OPCODE_TEXT:int = 0x01;
   private static const OPCODE_BINARY:int = 0x02;
   private static const OPCODE_CLOSE:int = 0x08;
   private static const OPCODE_PING:int = 0x09;
   private static const OPCODE_PONG:int = 0x0a;
-  
+
   private static const STATUS_NORMAL_CLOSURE:int = 1000;
   private static const STATUS_NO_CODE:int = 1005;
   private static const STATUS_CLOSED_ABNORMALLY:int = 1006;
   private static const STATUS_CONNECTION_ERROR:int = 5000;
-  
+
   private var id:int;
   private var url:String;
   private var scheme:String;
@@ -56,23 +56,23 @@ public class WebSocket extends EventDispatcher {
   private var requestedProtocols:Array;
   private var cookie:String;
   private var headers:String;
-  
+
   private var rawSocket:Socket;
   private var tlsSocket:TLSSocket;
   private var tlsConfig:TLSConfig;
   private var socket:Socket;
-  
+
   private var acceptedProtocol:String;
   private var expectedDigest:String;
-  
+
   private var buffer:ByteArray = new ByteArray();
   private var fragmentsBuffer:ByteArray = null;
   private var headerState:int = 0;
   private var readyState:int = CONNECTING;
-  
+
   private var logger:IWebSocketLogger;
   private var base64Encoder:Base64Encoder = new Base64Encoder();
-  
+
   public function WebSocket(
       id:int, url:String, protocols:Array, origin:String,
       proxyHost:String, proxyPort:int,
@@ -95,7 +95,7 @@ public class WebSocket extends EventDispatcher {
     // headers should be zero or more complete lines, for example
     // "Header1: xxx\r\nHeader2: yyyy\r\n"
     this.headers = headers;
-    
+
     if (proxyHost != null && proxyPort != 0){
       if (scheme == "wss") {
         fatal("wss with proxy is not supported");
@@ -106,6 +106,7 @@ public class WebSocket extends EventDispatcher {
       rawSocket = socket = proxySocket;
     } else {
       rawSocket = new Socket();
+      rawSocket.timeout = 2000;
       if (scheme == "wss") {
         tlsConfig= new TLSConfig(TLSEngine.CLIENT,
             null, null, null, null, null,
@@ -126,14 +127,14 @@ public class WebSocket extends EventDispatcher {
     rawSocket.addEventListener(SecurityErrorEvent.SECURITY_ERROR, onSocketSecurityError);
     rawSocket.connect(host, port);
   }
-  
+
   /**
    * @return  This WebSocket's ID.
    */
   public function getId():int {
     return this.id;
   }
-  
+
   /**
    * @return this WebSocket's readyState.
    */
@@ -144,7 +145,7 @@ public class WebSocket extends EventDispatcher {
   public function getAcceptedProtocol():String {
     return this.acceptedProtocol;
   }
-  
+
   public function send(encData:String):int {
     var data:String;
     try {
@@ -172,7 +173,7 @@ public class WebSocket extends EventDispatcher {
       return 0;
     }
   }
-  
+
   public function close(
       code:int = STATUS_NO_CODE, reason:String = "", origin:String = "client"):void {
     if (code != STATUS_NORMAL_CLOSURE &&
@@ -215,7 +216,7 @@ public class WebSocket extends EventDispatcher {
       readyState = CLOSING;
     }
   }
-  
+
   private function onSocketConnect(event:Event):void {
     logger.log("connected");
 
@@ -223,7 +224,7 @@ public class WebSocket extends EventDispatcher {
       logger.log("starting SSL/TLS");
       tlsSocket.startTLS(rawSocket, host, tlsConfig);
     }
-    
+
     var defaultPort:int = scheme == "wss" ? 443 : 80;
     var hostValue:String = host + (port == defaultPort ? "" : ":" + port);
     var key:String = generateKey();
@@ -237,7 +238,7 @@ public class WebSocket extends EventDispatcher {
     }
     // if caller passes additional headers they must end with "\r\n"
     if (headers) opt += headers;
-    
+
     var req:String = StringUtil.substitute(
       "GET {0} HTTP/1.1\r\n" +
       "Host: {1}\r\n" +
@@ -286,7 +287,7 @@ public class WebSocket extends EventDispatcher {
     }
     onConnectionError(message);
   }
-  
+
   private function onConnectionError(message:String):void {
     if (readyState == CLOSED) return;
     logger.error(message);
@@ -389,7 +390,7 @@ public class WebSocket extends EventDispatcher {
       }
     }
   }
-  
+
   private function validateHandshake(headerStr:String):Boolean {
     var lines:Array = headerStr.split(/\r\n/);
     if (!lines[0].match(/^HTTP\/1.1 101 /)) {
@@ -448,17 +449,17 @@ public class WebSocket extends EventDispatcher {
     frame.payload = payload;
     return sendFrame(frame);
   }
-  
+
   private function sendFrame(frame:WebSocketFrame):Boolean {
-    
+
     var plength:uint = frame.payload.length;
-    
+
     // Generates a mask.
     var mask:ByteArray = new ByteArray();
     for (var i:int = 0; i < 4; i++) {
       mask.writeByte(randomInt(0, 255));
     }
-    
+
     var header:ByteArray = new ByteArray();
     // FIN + RSV + opcode
     header.writeByte((frame.fin ? 0x80 : 0x00) | (frame.rsv << 4) | frame.opcode);
@@ -475,7 +476,7 @@ public class WebSocket extends EventDispatcher {
       fatal("Send frame size too large");
     }
     header.writeBytes(mask);
-    
+
     var maskedPayload:ByteArray = new ByteArray();
     maskedPayload.length = frame.payload.length;
     for (i = 0; i < frame.payload.length; i++) {
@@ -496,15 +497,15 @@ public class WebSocket extends EventDispatcher {
       return false;
     }
     return true;
-    
+
   }
 
   private function parseFrame():WebSocketFrame {
-    
+
     var frame:WebSocketFrame = new WebSocketFrame();
     var hlength:uint = 0;
     var plength:uint = 0;
-    
+
     hlength = 2;
     if (buffer.length < hlength) {
       return null;
@@ -519,7 +520,7 @@ public class WebSocket extends EventDispatcher {
     plength = buffer[1] & 0x7f;
 
     if (plength == 126) {
-      
+
       hlength = 4;
       if (buffer.length < hlength) {
         return null;
@@ -527,9 +528,9 @@ public class WebSocket extends EventDispatcher {
       buffer.endian = Endian.BIG_ENDIAN;
       buffer.position = 2;
       plength = buffer.readUnsignedShort();
-      
+
     } else if (plength == 127) {
-      
+
       hlength = 10;
       if (buffer.length < hlength) {
         return null;
@@ -543,21 +544,21 @@ public class WebSocket extends EventDispatcher {
         fatal("Frame length exceeds 4294967295. Bailing out!");
         return null;
       }
-      
+
     }
 
     if (buffer.length < hlength + plength) {
       return null;
     }
-    
+
     frame.length = hlength + plength;
     frame.payload = new ByteArray();
     buffer.position = hlength;
     buffer.readBytes(frame.payload, 0, plength);
     return frame;
-    
+
   }
-  
+
   private function dispatchCloseEvent(wasClean:Boolean, code:int, reason:String):void {
     var event:WebSocketEvent = new WebSocketEvent("close");
     event.wasClean = wasClean;
@@ -565,7 +566,7 @@ public class WebSocket extends EventDispatcher {
     event.reason = reason;
     dispatchEvent(event);
   }
-  
+
   private function removeBufferBefore(pos:int):void {
     if (pos == 0) return;
     var nextBuffer:ByteArray = new ByteArray();
@@ -573,7 +574,7 @@ public class WebSocket extends EventDispatcher {
     buffer.readBytes(nextBuffer);
     buffer = nextBuffer;
   }
-  
+
   private function generateKey():String {
     var vals:ByteArray = new ByteArray();
     vals.length = 16;
@@ -584,7 +585,7 @@ public class WebSocket extends EventDispatcher {
     base64Encoder.encodeBytes(vals);
     return base64Encoder.toString();
   }
-  
+
   private function readUTFBytes(buffer:ByteArray, start:int, numBytes:int):String {
     buffer.position = start;
     var data:String = "";
@@ -598,11 +599,11 @@ public class WebSocket extends EventDispatcher {
     data += buffer.readUTFBytes(start + numBytes - buffer.position);
     return data;
   }
-  
+
   private function randomInt(min:uint, max:uint):uint {
     return min + Math.floor(Math.random() * (Number(max) - min + 1));
   }
-  
+
   private function fatal(message:String):void {
     logger.error(message);
     throw message;
